@@ -24,12 +24,14 @@ if os.environ.get('GHL_API_KEY'):
     GHL_CONFIG = {
         'api_key': os.environ.get('GHL_API_KEY'),
         'location_id': os.environ.get('GHL_LOCATION_ID', '10SapwdFnQK3Kwqp5ecv'),
+        'company_id': os.environ.get('GHL_COMPANY_ID'),  # Required for sub-account creation
         'company_name': 'cell_products',
-        'base_url': os.environ.get('GHL_BASE_URL', 'https://rest.gohighlevel.com/v1')
+        'base_url': os.environ.get('GHL_BASE_URL', 'https://services.leadconnectorhq.com')
     }
     print("✅ Loaded Cell Products configuration from environment variables")
     print(f"🏢 Company: {GHL_CONFIG.get('company_name', 'cell_products')}")
     print(f"📍 Location ID: {GHL_CONFIG.get('location_id', 'N/A')}")
+    print(f"🏛️ Company ID: {GHL_CONFIG.get('company_id', 'NOT SET - REQUIRED!')}")
 else:
     # Fallback to config system (local development)
     try:
@@ -40,10 +42,11 @@ else:
         print("✅ Loaded Cell Products configuration from config system")
         print(f"🏢 Company: {GHL_CONFIG.get('company_name', 'cell_products')}")
         print(f"📍 Location ID: {GHL_CONFIG.get('location_id', 'N/A')}")
+        print(f"🏛️ Company ID: {GHL_CONFIG.get('company_id', 'NOT SET - REQUIRED!')}")
         
     except Exception as e:
         print(f"❌ Failed to load Cell Products GHL config: {e}")
-        print("Please set GHL_API_KEY and GHL_LOCATION_ID environment variables")
+        print("Please set GHL_API_KEY, GHL_COMPANY_ID, and GHL_LOCATION_ID environment variables")
         sys.exit(1)
 
 # Configuration using loaded GHL config
@@ -51,11 +54,14 @@ CONFIG = {
     # Use API key from config system
     'company_api_key': GHL_CONFIG['api_key'],
     
+    # Cell Products Company ID - REQUIRED for sub-account creation
+    'company_id': GHL_CONFIG.get('company_id'),
+    
     # Cell Products Location ID from config system
     'cell_products_location_id': GHL_CONFIG['location_id'],
     
     # API Configuration
-    'base_url': GHL_CONFIG.get('base_url', 'https://rest.gohighlevel.com/v1'),
+    'base_url': GHL_CONFIG.get('base_url', 'https://services.leadconnectorhq.com'),
     'webhook_auth_token': 'cell-products-survey-webhook-2025',
     
     # Default timezone for new sub-accounts
@@ -136,24 +142,30 @@ def create_subaccount_from_survey_data(survey_data):
         if not all([business_name, first_name, last_name, email]):
             raise ValueError("Missing required fields: business_name, first_name, last_name, email")
         
+        # Validate companyId is configured (required for GHL API)
+        if not CONFIG['company_id']:
+            raise ValueError("Missing required GHL_COMPANY_ID environment variable or company_id in config")
+        
         # Clean phone number
         clean_phone = phone.replace('+1', '').replace('-', '').replace('(', '').replace(')', '').replace(' ', '')
         
-        # Build sub-account data
+        # Build sub-account data according to GHL API requirements
         subaccount_data = {
-            "name": f"{business_name} - {first_name} {last_name}",
-            "businessName": business_name,  # Required field
+            "name": business_name,  # Business name (not combined with contact name)
+            "companyId": CONFIG['company_id'],  # REQUIRED field for sub-account creation
+            "phone": clean_phone,
             "address": survey_data.get('address', ''),
             "city": survey_data.get('city', ''),
             "state": survey_data.get('state', ''),
-            "postalCode": survey_data.get('zip_code', ''),
             "country": "US",
-            "phone": clean_phone,
-            "email": email,
+            "postalCode": survey_data.get('zip_code', ''),
             "website": survey_data.get('website', ''),
             "timezone": CONFIG['default_timezone'],
-            "firstName": first_name,
-            "lastName": last_name
+            "prospectInfo": {  # Contact info must be in prospectInfo object
+                "firstName": first_name,
+                "lastName": last_name,
+                "email": email
+            }
         }
         
         # Log sub-account creation attempt
