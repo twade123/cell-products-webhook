@@ -9,4 +9,4 @@ COPY complete_subaccount_creation_standalone.py .
 
 EXPOSE 8080
 
-CMD ["python", "complete_subaccount_creation_standalone.py"]
+CMD ["python", "complete_subaccount_creation.py"]
