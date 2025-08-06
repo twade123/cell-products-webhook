@@ -99,42 +99,63 @@ def validate_cell_products_source(source_location_id):
     logging.info("✅ Webhook confirmed from Cell Products account")
     return True
 
-def create_subaccount_from_survey_data(survey_data):
-    """Create a new sub-account using survey submission data."""
+def create_subaccount_from_survey_data(payload):
+    """Create a new sub-account using webhook payload data."""
     
     try:
-        # Extract required data from survey - handle multiple possible field names
-        business_name = (survey_data.get('business_name') or 
-                        survey_data.get('businessName') or 
-                        survey_data.get('company') or 
-                        survey_data.get('companyName') or 
-                        survey_data.get('Provider Name') or 
-                        survey_data.get('Legal Company Name') or '').strip()
+        # Extract required data from payload - form fields are at the top level
+        business_name = (payload.get('company_name') or 
+                        payload.get('business_name') or 
+                        payload.get('businessName') or 
+                        payload.get('company') or 
+                        payload.get('companyName') or 
+                        payload.get('Provider Name') or 
+                        payload.get('Legal Company Name') or 
+                        # Also check contact object as fallback
+                        payload.get('contact', {}).get('company_name') or 
+                        payload.get('contact', {}).get('business_name') or '').strip()
         
-        first_name = (survey_data.get('first_name') or 
-                     survey_data.get('firstName') or 
-                     survey_data.get('fname') or 
-                     survey_data.get('Patient First Name') or '').strip()
+        first_name = (payload.get('first_name') or 
+                     payload.get('firstName') or 
+                     payload.get('fname') or 
+                     payload.get('Patient First Name') or 
+                     payload.get('contact', {}).get('firstName') or '').strip()
         
-        last_name = (survey_data.get('last_name') or 
-                    survey_data.get('lastName') or 
-                    survey_data.get('lname') or 
-                    survey_data.get('Patient Last Name') or '').strip()
+        last_name = (payload.get('last_name') or 
+                    payload.get('lastName') or 
+                    payload.get('lname') or 
+                    payload.get('Patient Last Name') or 
+                    payload.get('contact', {}).get('lastName') or '').strip()
         
-        email = (survey_data.get('email') or 
-                survey_data.get('emailAddress') or 
-                survey_data.get('Email') or 
-                survey_data.get('Patient Email') or '').strip()
+        email = (payload.get('email') or 
+                payload.get('emailAddress') or 
+                payload.get('Email') or 
+                payload.get('Patient Email') or 
+                payload.get('contact', {}).get('email') or '').strip()
         
-        phone = (survey_data.get('phone') or 
-                survey_data.get('phoneNumber') or 
-                survey_data.get('mobile') or 
-                survey_data.get('Phone') or 
-                survey_data.get('Patient Phone') or '').strip()
+        phone = (payload.get('phone') or 
+                payload.get('phoneNumber') or 
+                payload.get('mobile') or 
+                payload.get('Phone') or 
+                payload.get('Patient Phone') or 
+                payload.get('contact', {}).get('phone') or '').strip()
+        
+        # Log extracted data for debugging
+        logging.info(f"🔍 Data extraction results:")
+        logging.info(f"   Business name: '{business_name}'")
+        logging.info(f"   First name: '{first_name}'")
+        logging.info(f"   Last name: '{last_name}'")
+        logging.info(f"   Email: '{email}'")
+        logging.info(f"   Phone: '{phone}'")
         
         # Validate required fields
         if not all([business_name, first_name, last_name, email]):
-            raise ValueError("Missing required fields: business_name, first_name, last_name, email")
+            missing_fields = []
+            if not business_name: missing_fields.append("business_name")
+            if not first_name: missing_fields.append("first_name") 
+            if not last_name: missing_fields.append("last_name")
+            if not email: missing_fields.append("email")
+            raise ValueError(f"Missing required fields: {', '.join(missing_fields)}")
         
         # Clean phone number
         clean_phone = phone.replace('+1', '').replace('-', '').replace('(', '').replace(')', '').replace(' ', '')
@@ -143,14 +164,16 @@ def create_subaccount_from_survey_data(survey_data):
         subaccount_data = {
             "name": f"{business_name} - {first_name} {last_name}",
             "businessName": business_name,  # Required field
-            "address": survey_data.get('address', ''),
-            "city": survey_data.get('city', ''),
-            "state": survey_data.get('state', ''),
-            "postalCode": survey_data.get('zip_code', ''),
+            "address": (payload.get('address') or payload.get('address1') or 
+                       payload.get('contact', {}).get('address1', '')),
+            "city": (payload.get('city') or payload.get('contact', {}).get('city', '')),
+            "state": (payload.get('state') or payload.get('contact', {}).get('state', '')),
+            "postalCode": (payload.get('zip_code') or payload.get('postal_code') or 
+                          payload.get('postalCode') or payload.get('contact', {}).get('postal_code', '')),
             "country": "US",
             "phone": clean_phone,
             "email": email,
-            "website": survey_data.get('website', ''),
+            "website": (payload.get('website') or payload.get('contact', {}).get('website', '')),
             "timezone": CONFIG['default_timezone'],
             "firstName": first_name,
             "lastName": last_name
@@ -265,26 +288,36 @@ def handle_survey_completion():
         logging.info(f"📊 Available survey fields: {list(survey_data.keys())}")
         logging.info(f"📊 Survey data sample (first 10 fields): {dict(list(survey_data.items())[:10])}")
         
-        # Check for business name with GHL field names
-        business_name = (survey_data.get('business_name') or 
-                        survey_data.get('businessName') or 
-                        survey_data.get('company') or 
-                        survey_data.get('companyName') or 
-                        survey_data.get('Provider Name') or 
-                        survey_data.get('Legal Company Name') or '').strip()
+        # Check for business name in the main payload (not just survey_data)
+        # The form fields are at the top level of the payload, not in survey_data
+        business_name = (payload.get('company_name') or 
+                        payload.get('business_name') or 
+                        payload.get('businessName') or 
+                        payload.get('company') or 
+                        payload.get('companyName') or 
+                        payload.get('Provider Name') or 
+                        payload.get('Legal Company Name') or 
+                        # Also check contact object as fallback
+                        payload.get('contact', {}).get('company_name') or 
+                        payload.get('contact', {}).get('business_name') or '').strip()
+        
+        logging.info(f"🔍 Business name found: '{business_name}'")
+        
         if not business_name:
             logging.error("❌ Business name required for sub-account creation")
+            logging.error(f"❌ Available payload fields: {list(payload.keys())}")
+            logging.error(f"❌ Available survey_data fields: {list(survey_data.keys())}")
             return jsonify({"error": "Business name required"}), 400
         
         # Log processing start
-        contact_name = f"{survey_data.get('first_name', '')} {survey_data.get('last_name', '')}"
+        contact_name = f"{payload.get('first_name', '')} {payload.get('last_name', '')}"
         logging.info(f"🚀 Processing survey completion for: {contact_name}")
         logging.info(f"🏢 Business: {business_name}")
         logging.info(f"📝 Survey ID: {survey_id}")
         logging.info(f"📍 Source: Cell Products ({source_location_id})")
         
-        # Create sub-account
-        result = create_subaccount_from_survey_data(survey_data)
+        # Create sub-account using the full payload (form fields are at top level)
+        result = create_subaccount_from_survey_data(payload)
         
         if result['success']:
             response_data = {
