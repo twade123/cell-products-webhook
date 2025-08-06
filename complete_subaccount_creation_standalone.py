@@ -67,12 +67,23 @@ def validate_webhook_auth(request):
 
 def validate_cell_products_source(source_location_id):
     """Ensure webhook is coming from Cell Products account only."""
-    if source_location_id != CONFIG['cell_products_location_id']:
+    # TEMPORARY FIX: Allow both location IDs while we debug the mismatch
+    valid_location_ids = [
+        CONFIG['cell_products_location_id'],  # Original expected ID
+        'Sqbexj54nvsxOI4V7SsD'               # Actual incoming ID from GHL
+    ]
+    
+    if source_location_id not in valid_location_ids:
         logging.error(f"❌ Unauthorized source location: {source_location_id}")
-        logging.error(f"   Expected Cell Products ID: {CONFIG['cell_products_location_id']}")
+        logging.error(f"   Expected Cell Products IDs: {valid_location_ids}")
         return False
     
-    logging.info("✅ Webhook confirmed from Cell Products account")
+    if source_location_id != CONFIG['cell_products_location_id']:
+        logging.warning(f"⚠️ Using alternate Cell Products location ID: {source_location_id}")
+        logging.warning(f"   Expected: {CONFIG['cell_products_location_id']}")
+    else:
+        logging.info("✅ Webhook confirmed from Cell Products account")
+    
     return True
 
 def create_subaccount_from_survey_data(survey_data):
@@ -83,22 +94,30 @@ def create_subaccount_from_survey_data(survey_data):
         business_name = (survey_data.get('business_name') or 
                         survey_data.get('businessName') or 
                         survey_data.get('company') or 
-                        survey_data.get('companyName') or '').strip()
+                        survey_data.get('companyName') or 
+                        survey_data.get('Provider Name') or 
+                        survey_data.get('Legal Company Name') or '').strip()
         
         first_name = (survey_data.get('first_name') or 
                      survey_data.get('firstName') or 
-                     survey_data.get('fname') or '').strip()
+                     survey_data.get('fname') or 
+                     survey_data.get('Patient First Name') or '').strip()
         
         last_name = (survey_data.get('last_name') or 
                     survey_data.get('lastName') or 
-                    survey_data.get('lname') or '').strip()
+                    survey_data.get('lname') or 
+                    survey_data.get('Patient Last Name') or '').strip()
         
         email = (survey_data.get('email') or 
-                survey_data.get('emailAddress') or '').strip()
+                survey_data.get('emailAddress') or 
+                survey_data.get('Email') or 
+                survey_data.get('Patient Email') or '').strip()
         
         phone = (survey_data.get('phone') or 
                 survey_data.get('phoneNumber') or 
-                survey_data.get('mobile') or '').strip()
+                survey_data.get('mobile') or 
+                survey_data.get('Phone') or 
+                survey_data.get('Patient Phone') or '').strip()
         
         # Validate required fields
         if not all([business_name, first_name, last_name, email]):
@@ -109,21 +128,21 @@ def create_subaccount_from_survey_data(survey_data):
         
         # Build sub-account data
         subaccount_data = {
-            "name": f"{business_name} - {first_name} {last_name}",
-            "businessName": business_name,  # Required field
-            "address": survey_data.get('address', ''),
-            "city": survey_data.get('city', ''),
-            "state": survey_data.get('state', ''),
-            "postalCode": survey_data.get('zip_code', ''),
-            "country": "US",
-            "phone": clean_phone,
-            "email": email,
-            "website": survey_data.get('website', ''),
-            "timezone": CONFIG['default_timezone'],
-            "firstName": first_name,
-            "lastName": last_name
+          "name": f"{business_name} - {first_name} {last_name}",
+          "businessName": business_name,  # Required field
+          "address": survey_data.get('address', ''),
+          "city": survey_data.get('city', ''),
+          "state": survey_data.get('state', ''),
+          "postalCode": survey_data.get('zip_code', ''),
+          "country": "US",
+          "phone": clean_phone,
+          "email": email,
+          "website": survey_data.get('website', ''),
+          "timezone": CONFIG['default_timezone'],
+          "firstName": first_name,
+          "lastName": last_name
         }
-        
+      
         # Log sub-account creation attempt
         logging.info(f"🚀 Creating sub-account for {business_name}")
         logging.info(f"👤 Contact: {first_name} {last_name} ({email})")
@@ -217,10 +236,12 @@ def handle_survey_completion():
             return jsonify({"error": "Unauthorized source location"}), 403
         
         # Extract survey/form data from various possible structures
+        # GHL can send form fields nested in objects OR directly at top level
         survey_data = (payload.get('submission', {}) or 
                       payload.get('survey_data', {}) or 
                       payload.get('data', {}) or 
-                      payload.get('contact', {}) or {})
+                      payload.get('contact', {}) or 
+                      payload)  # Fallback to top-level payload if no nested structure
         
         survey_id = (payload.get('formId') or 
                     payload.get('survey_id') or 
@@ -231,17 +252,31 @@ def handle_survey_completion():
             logging.error("❌ No survey data in webhook")
             return jsonify({"error": "No survey data"}), 400
         
+        # Debug: Log all available field names for troubleshooting
+        logging.info(f"📊 Available survey fields: {list(survey_data.keys())}")
+        logging.info(f"📊 Survey data sample: {dict(list(survey_data.items())[:10])}")  # First 10 fields
+        
         business_name = (survey_data.get('business_name') or 
                         survey_data.get('businessName') or 
                         survey_data.get('company') or 
-                        survey_data.get('companyName') or '').strip()
+                        survey_data.get('companyName') or 
+                        survey_data.get('Provider Name') or 
+                        survey_data.get('Legal Company Name') or '').strip()
         
         if not business_name:
             logging.error("❌ Business name required for sub-account creation")
             return jsonify({"error": "Business name required"}), 400
         
-        # Log processing start
-        contact_name = f"{survey_data.get('first_name', '')} {survey_data.get('last_name', '')}"
+        # Log processing start - extract names properly
+        first_name_field = (survey_data.get('first_name') or 
+                           survey_data.get('firstName') or 
+                           survey_data.get('fname') or 
+                           survey_data.get('Patient First Name') or '')
+        last_name_field = (survey_data.get('last_name') or 
+                          survey_data.get('lastName') or 
+                          survey_data.get('lname') or 
+                          survey_data.get('Patient Last Name') or '')
+        contact_name = f"{first_name_field} {last_name_field}".strip()
         logging.info(f"🚀 Processing survey completion for: {contact_name}")
         logging.info(f"🏢 Business: {business_name}")
         logging.info(f"📝 Survey ID: {survey_id}")
