@@ -62,11 +62,10 @@ CONFIG = {
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('/Users/timothywade/Jarvis/logs/survey_webhook.log'),
-        logging.StreamHandler()
+      level=logging.INFO,
+      format='%(asctime)s - %(levelname)s - %(message)s',
+      handlers=[
+          logging.StreamHandler()
     ]
 )
 
