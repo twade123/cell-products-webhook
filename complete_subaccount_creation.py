@@ -108,7 +108,6 @@ def create_subaccount_from_survey_data(survey_data):
         
         # Try each field individually to debug extraction
         business_name_candidates = {
-            'business name': survey_data.get('business name'),
             'business_name': survey_data.get('business_name'),
             'businessName': survey_data.get('businessName'),
             'company': survey_data.get('company'),
@@ -364,7 +363,7 @@ def handle_survey_completion():
         contact_name = ' '.join(contact_name_parts) if contact_name_parts else 'Unknown'
         
         # Log key fields for debugging
-        business_name_debug = (survey_data.get('business name') or 
+        business_name_debug = (survey_data.get('business_name') or 
                              survey_data.get('business_name') or 
                              survey_data.get('company') or 'NOT_FOUND')
         
