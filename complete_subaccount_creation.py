@@ -299,7 +299,7 @@ def handle_survey_completion():
         # Skip business name validation here - let create_subaccount_from_survey_data handle it
         # This avoids duplicate validation and potential issues with field extraction
         
-        business_name = (survey_data.get('business name') or 
+        business_name = (survey_data.get('business_name') or 
                         survey_data.get('business_name') or 
                         survey_data.get('businessName') or 
                         survey_data.get('company') or 
