@@ -13,9 +13,7 @@ import traceback
 import os
 import sys
 
-# Import configuration system
-sys.path.append('/Users/timothywade/Jarvis/Core')
-from config import get_gohighlevel_config, validate_gohighlevel_config
+
 
 # Try environment variables first (for Railway), fallback to config system
 GHL_CONFIG = {}
