@@ -141,7 +141,7 @@ def create_subaccount_from_survey_data(survey_data):
         
         # Build sub-account data
         subaccount_data = {
-            "name": f"{business_name} - {first_name} {last_name}",
+            "name": f"{location_name} - {first_name} {last_name}",
             "businessName": business_name,  # Required field
             "address": survey_data.get('address', ''),
             "city": survey_data.get('city', ''),
@@ -157,7 +157,7 @@ def create_subaccount_from_survey_data(survey_data):
         }
         
         # Log sub-account creation attempt
-        logging.info(f"🚀 Creating sub-account for {business_name}")
+        logging.info(f"🚀 Creating sub-account for {location_name}")
         logging.info(f"👤 Contact: {first_name} {last_name} ({email})")
         logging.info(f"📊 Sub-account data: {json.dumps(subaccount_data, indent=2)}")
         
