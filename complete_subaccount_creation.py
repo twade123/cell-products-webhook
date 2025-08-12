@@ -104,7 +104,7 @@ def create_subaccount_from_survey_data(survey_data):
     
     try:
         # Extract required data from survey - handle multiple possible field names
-        business_name = (survey_data.get('business name') or
+        business_name = (survey_data.get('business_name') or
                         survey_data.get('business_name') or
                         survey_data.get('businessName') or
                         survey_data.get('location_name') or 
