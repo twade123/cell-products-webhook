@@ -5,7 +5,7 @@ WORKDIR /app
 COPY requirements-webhook.txt .
 RUN pip install -r requirements-webhook.txt
 
-COPY complete_subaccount_creation.py 
+COPY complete_subaccount_creation.py .
 
 EXPOSE 8080
 
