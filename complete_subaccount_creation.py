@@ -28,21 +28,6 @@ if os.environ.get('GHL_API_KEY'):
     print("✅ Loaded Cell Products configuration from environment variables")
     print(f"🏢 Company: {GHL_CONFIG.get('company_name', 'cell_products')}")
     print(f"📍 Location ID: {GHL_CONFIG.get('location_id', 'N/A')}")
-else:
-    # Fallback to config system (local development)
-    try:
-        GHL_CONFIG = get_gohighlevel_config('cell_products')
-        if not GHL_CONFIG or not validate_gohighlevel_config('cell_products'):
-            raise ValueError("Cell Products GHL configuration not found or invalid")
-        
-        print("✅ Loaded Cell Products configuration from config system")
-        print(f"🏢 Company: {GHL_CONFIG.get('company_name', 'cell_products')}")
-        print(f"📍 Location ID: {GHL_CONFIG.get('location_id', 'N/A')}")
-        
-    except Exception as e:
-        print(f"❌ Failed to load Cell Products GHL config: {e}")
-        print("Please set GHL_API_KEY and GHL_LOCATION_ID environment variables")
-        sys.exit(1)
 
 # Configuration using loaded GHL config
 CONFIG = {
