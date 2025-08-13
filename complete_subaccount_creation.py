@@ -21,7 +21,7 @@ if not os.environ.get('GHL_API_KEY'):
 
 GHL_CONFIG = {
     'api_key': os.environ.get('GHL_API_KEY'),
-    'location_id': os.environ.get('GHL_LOCATION_ID', '10SapwdFnQK3Kwqp5ecv'),
+    'location_id': os.environ.get('GHL_LOCATION_ID', 'Sqbexj54nvsxOI4V7SsD'),
     'company_name': 'cell_products',
     'base_url': os.environ.get('GHL_BASE_URL', 'https://rest.gohighlevel.com/v1')
 }
