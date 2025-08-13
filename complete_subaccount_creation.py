@@ -109,6 +109,15 @@ def create_subaccount_from_survey_data(survey_data):
                     survey_data.get('lname') or 
                     survey_data.get('Patient Last Name') or '').strip()
         
+        # If no separate name fields found, try parsing combined 'name' field
+        if not first_name and not last_name:
+            full_name = survey_data.get('name', '').strip()
+            if full_name:
+                # Parse combined name field
+                name_parts = full_name.replace('Dr. ', '').replace('Mr. ', '').replace('Ms. ', '').replace('Mrs. ', '').strip().split(' ', 1)
+                first_name = name_parts[0] if len(name_parts) > 0 else ''
+                last_name = name_parts[1] if len(name_parts) > 1 else ''
+        
         email = (survey_data.get('email') or 
                 survey_data.get('emailAddress') or 
                 survey_data.get('Email') or 
