@@ -266,12 +266,28 @@ def handle_survey_completion():
         logging.info(f"📊 Available survey fields: {list(survey_data.keys())}")
         logging.info(f"📊 Survey data sample: {dict(list(survey_data.items())[:10])}")  # First 10 fields
         
-        business_name = (survey_data.get('business_name') or 
+        # Debug business name extraction with each candidate
+        business_name_candidates = {
+            'business name': survey_data.get('business name'),
+            'business_name': survey_data.get('business_name'),
+            'businessName': survey_data.get('businessName'),
+            'company': survey_data.get('company'),
+            'companyName': survey_data.get('companyName'),
+            'Provider Name': survey_data.get('Provider Name'),
+            'Legal Company Name': survey_data.get('Legal Company Name')
+        }
+        
+        logging.info(f"🔍 Business name extraction candidates: {business_name_candidates}")
+        
+        business_name = (survey_data.get('business name') or     # Space format (what GHL sends) - CRITICAL FIX
+                        survey_data.get('business_name') or 
                         survey_data.get('businessName') or 
                         survey_data.get('company') or 
                         survey_data.get('companyName') or 
                         survey_data.get('Provider Name') or 
                         survey_data.get('Legal Company Name') or '').strip()
+        
+        logging.info(f"🔍 Extracted business name: '{business_name}'")
         
         if not business_name:
             logging.error("❌ Business name required for sub-account creation")
