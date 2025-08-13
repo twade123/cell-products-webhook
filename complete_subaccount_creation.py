@@ -2,73 +2,49 @@
 """
 Webhook-driven sub-account creation system for Cell Products account.
 Listens for survey completion webhooks and automatically creates sub-accounts.
+STANDALONE VERSION - Uses environment variables directly.
 """
 
 import requests
 import json
 import logging
+import os
 from datetime import datetime
 from flask import Flask, request, jsonify
 import traceback
-import os
-import sys
 
-# Import configuration system
-sys.path.append('/Users/timothywade/Jarvis/Core')
-from config import get_gohighlevel_config, validate_gohighlevel_config
-
-# Try environment variables first (for Railway), fallback to config system
-GHL_CONFIG = {}
-if os.environ.get('GHL_API_KEY'):
-    # Use environment variables (Railway deployment)
-    GHL_CONFIG = {
-        'api_key': os.environ.get('GHL_API_KEY'),
-        'location_id': os.environ.get('GHL_LOCATION_ID', 'Sqbexj54nvsxOI4V7SsD'),
-        'company_name': 'cell_products',
-        'base_url': os.environ.get('GHL_BASE_URL', 'https://rest.gohighlevel.com/v1')
-    }
-    print("✅ Loaded Cell Products configuration from environment variables")
-    print(f"🏢 Company: {GHL_CONFIG.get('company_name', 'cell_products')}")
-    print(f"📍 Location ID: {GHL_CONFIG.get('location_id', 'N/A')}")
-else:
-    # Fallback to config system (local development)
-    try:
-        GHL_CONFIG = get_gohighlevel_config('cell_products')
-        if not GHL_CONFIG or not validate_gohighlevel_config('cell_products'):
-            raise ValueError("Cell Products GHL configuration not found or invalid")
-        
-        print("✅ Loaded Cell Products configuration from config system")
-        print(f"🏢 Company: {GHL_CONFIG.get('company_name', 'cell_products')}")
-        print(f"📍 Location ID: {GHL_CONFIG.get('location_id', 'N/A')}")
-        
-    except Exception as e:
-        print(f"❌ Failed to load Cell Products GHL config: {e}")
-        print("Please set GHL_API_KEY and GHL_LOCATION_ID environment variables")
-        sys.exit(1)
-
-# Configuration using loaded GHL config
+# Configuration using environment variables
 CONFIG = {
-    # Use API key from config system
-    'company_api_key': GHL_CONFIG['api_key'],
+    # Get API key from environment variable
+    'company_api_key': os.environ.get('GHL_API_KEY', ''),
     
-    # Cell Products Location ID from config system
-    'cell_products_location_id': GHL_CONFIG['location_id'],
+    # Cell Products Location ID from environment variable
+    'cell_products_location_id': os.environ.get('GHL_LOCATION_ID', '10SapwdFnQK3Kwqp5ecv'),
     
     # API Configuration
-    'base_url': GHL_CONFIG.get('base_url', 'https://rest.gohighlevel.com/v1'),
+    'base_url': os.environ.get('GHL_BASE_URL', 'https://rest.gohighlevel.com/v1'),
     'webhook_auth_token': 'cell-products-survey-webhook-2025',
     
     # Default timezone for new sub-accounts
     'default_timezone': 'America/Phoenix'  # Cell Products is in Nevada/Arizona timezone
 }
 
+# Validate configuration
+if not CONFIG['company_api_key']:
+    print("❌ ERROR: GHL_API_KEY environment variable is required")
+    print("Set it in your Railway dashboard under Variables")
+    exit(1)
+
+print("✅ Loaded Cell Products configuration from environment variables")
+print(f"🏢 Company: cell_products")
+print(f"📍 Location ID: {CONFIG['cell_products_location_id']}")
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('/Users/timothywade/Jarvis/logs/survey_webhook.log'),
-        logging.StreamHandler()
+        logging.StreamHandler()  # Only console logging for cloud deployment
     ]
 )
 
@@ -91,12 +67,23 @@ def validate_webhook_auth(request):
 
 def validate_cell_products_source(source_location_id):
     """Ensure webhook is coming from Cell Products account only."""
-    if source_location_id != CONFIG['cell_products_location_id']:
+    # TEMPORARY FIX: Allow both location IDs while we debug the mismatch
+    valid_location_ids = [
+        CONFIG['cell_products_location_id'],  # Original expected ID
+        'Sqbexj54nvsxOI4V7SsD'               # Actual incoming ID from GHL
+    ]
+    
+    if source_location_id not in valid_location_ids:
         logging.error(f"❌ Unauthorized source location: {source_location_id}")
-        logging.error(f"   Expected Cell Products ID: {CONFIG['cell_products_location_id']}")
+        logging.error(f"   Expected Cell Products IDs: {valid_location_ids}")
         return False
     
-    logging.info("✅ Webhook confirmed from Cell Products account")
+    if source_location_id != CONFIG['cell_products_location_id']:
+        logging.warning(f"⚠️ Using alternate Cell Products location ID: {source_location_id}")
+        logging.warning(f"   Expected: {CONFIG['cell_products_location_id']}")
+    else:
+        logging.info("✅ Webhook confirmed from Cell Products account")
+    
     return True
 
 def create_subaccount_from_survey_data(survey_data):
@@ -104,7 +91,9 @@ def create_subaccount_from_survey_data(survey_data):
     
     try:
         # Extract required data from survey - handle multiple possible field names
-        business_name = (survey_data.get('business_name') or 
+        business_name = (survey_data.get('Business name') or     # Capital B (what GHL actually sends)
+                        survey_data.get('business name') or     # lowercase b (backup)
+                        survey_data.get('business_name') or 
                         survey_data.get('businessName') or 
                         survey_data.get('company') or 
                         survey_data.get('companyName') or 
@@ -120,6 +109,15 @@ def create_subaccount_from_survey_data(survey_data):
                     survey_data.get('lastName') or 
                     survey_data.get('lname') or 
                     survey_data.get('Patient Last Name') or '').strip()
+        
+        # If no separate name fields found, try parsing combined 'name' field
+        if not first_name and not last_name:
+            full_name = survey_data.get('name', '').strip()
+            if full_name:
+                # Parse combined name field
+                name_parts = full_name.replace('Dr. ', '').replace('Mr. ', '').replace('Ms. ', '').replace('Mrs. ', '').strip().split(' ', 1)
+                first_name = name_parts[0] if len(name_parts) > 0 else ''
+                last_name = name_parts[1] if len(name_parts) > 1 else ''
         
         email = (survey_data.get('email') or 
                 survey_data.get('emailAddress') or 
@@ -141,21 +139,21 @@ def create_subaccount_from_survey_data(survey_data):
         
         # Build sub-account data
         subaccount_data = {
-            "name": f"{business_name} - {first_name} {last_name}",
-            "businessName": business_name,  # Required field
-            "address": survey_data.get('address', ''),
-            "city": survey_data.get('city', ''),
-            "state": survey_data.get('state', ''),
-            "postalCode": survey_data.get('zip_code', ''),
-            "country": "US",
-            "phone": clean_phone,
-            "email": email,
-            "website": survey_data.get('website', ''),
-            "timezone": CONFIG['default_timezone'],
-            "firstName": first_name,
-            "lastName": last_name
+          "name": f"{business_name} - {first_name} {last_name}",
+          "businessName": business_name,  # Required field
+          "address": survey_data.get('address', ''),
+          "city": survey_data.get('city', ''),
+          "state": survey_data.get('state', ''),
+          "postalCode": survey_data.get('zip_code', ''),
+          "country": "US",
+          "phone": clean_phone,
+          "email": email,
+          "website": survey_data.get('website', ''),
+          "timezone": CONFIG['default_timezone'],
+          "firstName": first_name,
+          "lastName": last_name
         }
-        
+      
         # Log sub-account creation attempt
         logging.info(f"🚀 Creating sub-account for {business_name}")
         logging.info(f"👤 Contact: {first_name} {last_name} ({email})")
@@ -263,21 +261,47 @@ def handle_survey_completion():
         
         # Debug: Log all available field names for troubleshooting
         logging.info(f"📊 Available survey fields: {list(survey_data.keys())}")
-        logging.info(f"📊 Survey data sample (first 10 fields): {dict(list(survey_data.items())[:10])}")
+        logging.info(f"📊 Survey data sample: {dict(list(survey_data.items())[:10])}")  # First 10 fields
         
-        # Check for business name with GHL field names
-        business_name = (survey_data.get('business_name') or 
+        # Debug business name extraction with each candidate
+        business_name_candidates = {
+            'Business name': survey_data.get('Business name'),           # Capital B (what GHL actually sends)
+            'business name': survey_data.get('business name'),           # lowercase b (backup)
+            'business_name': survey_data.get('business_name'),
+            'businessName': survey_data.get('businessName'),
+            'company': survey_data.get('company'),
+            'companyName': survey_data.get('companyName'),
+            'Provider Name': survey_data.get('Provider Name'),
+            'Legal Company Name': survey_data.get('Legal Company Name')
+        }
+        
+        logging.info(f"🔍 Business name extraction candidates: {business_name_candidates}")
+        
+        business_name = (survey_data.get('Business name') or     # Capital B (what GHL actually sends) - CRITICAL FIX
+                        survey_data.get('business name') or     # lowercase b (backup)
+                        survey_data.get('business_name') or 
                         survey_data.get('businessName') or 
                         survey_data.get('company') or 
                         survey_data.get('companyName') or 
                         survey_data.get('Provider Name') or 
                         survey_data.get('Legal Company Name') or '').strip()
+        
+        logging.info(f"🔍 Extracted business name: '{business_name}'")
+        
         if not business_name:
             logging.error("❌ Business name required for sub-account creation")
             return jsonify({"error": "Business name required"}), 400
         
-        # Log processing start
-        contact_name = f"{survey_data.get('first_name', '')} {survey_data.get('last_name', '')}"
+        # Log processing start - extract names properly
+        first_name_field = (survey_data.get('first_name') or 
+                           survey_data.get('firstName') or 
+                           survey_data.get('fname') or 
+                           survey_data.get('Patient First Name') or '')
+        last_name_field = (survey_data.get('last_name') or 
+                          survey_data.get('lastName') or 
+                          survey_data.get('lname') or 
+                          survey_data.get('Patient Last Name') or '')
+        contact_name = f"{first_name_field} {last_name_field}".strip()
         logging.info(f"🚀 Processing survey completion for: {contact_name}")
         logging.info(f"🏢 Business: {business_name}")
         logging.info(f"📝 Survey ID: {survey_id}")
@@ -376,13 +400,9 @@ def health_check():
         "timestamp": datetime.now().isoformat(),
         "service": "Cell Products Survey Webhook Handler",
         "account": "Cell Products Only",
-        "location_id": CONFIG['cell_products_location_id']
+        "location_id": CONFIG['cell_products_location_id'],
+        "api_key_configured": bool(CONFIG['company_api_key'])
     })
-
-def setup_logging_directory():
-    """Ensure logs directory exists."""
-    log_dir = "/Users/timothywade/Jarvis/logs"
-    os.makedirs(log_dir, exist_ok=True)
 
 def verify_configuration():
     """Verify Cell Products configuration is valid."""
@@ -408,8 +428,6 @@ def verify_configuration():
         return False
 
 if __name__ == '__main__':
-    setup_logging_directory()
-    
     # Get port from environment variable (for cloud deployment) or use default
     port = int(os.environ.get('PORT', 8080))
     host = os.environ.get('HOST', '0.0.0.0')  # 0.0.0.0 for cloud deployment
