@@ -19,7 +19,7 @@ CONFIG = {
     'company_api_key': os.environ.get('GHL_API_KEY', ''),
     
     # Cell Products Location ID from environment variable
-    'cell_products_location_id': os.environ.get('GHL_LOCATION_ID', '10SapwdFnQK3Kwqp5ecv'),
+    'cell_products_location_id': os.environ.get('GHL_LOCATION_ID', 'Sqbexj54nvsxOI4V7SsD'),
     
     # API Configuration
     'base_url': os.environ.get('GHL_BASE_URL', 'https://rest.gohighlevel.com/v1'),
