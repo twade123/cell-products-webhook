@@ -98,7 +98,25 @@ def create_subaccount_from_survey_data(survey_data):
                         survey_data.get('company') or 
                         survey_data.get('companyName') or 
                         survey_data.get('Provider Name') or 
-                        survey_data.get('Legal Company Name') or '').strip()
+                        survey_data.get('Legal Company Name') or 
+                        survey_data.get('legal_company_name') or     # From webhook template
+                        '').strip()
+        
+        # Extract EIN (Federal Tax ID)
+        ein = (survey_data.get('ein') or 
+               survey_data.get('federal_tax_id__ein') or     # From webhook template
+               survey_data.get('federal_tax_id') or 
+               survey_data.get('tax_id') or 
+               survey_data.get('EIN') or 
+               survey_data.get('Federal Tax ID') or 
+               '').strip()
+        
+        # Extract NPI (National Provider Identifier)
+        npi = (survey_data.get('npi') or     # From webhook template
+               survey_data.get('NPI') or 
+               survey_data.get('national_provider_id') or 
+               survey_data.get('provider_id') or 
+               '').strip()
         
         first_name = (survey_data.get('first_name') or 
                      survey_data.get('firstName') or 
@@ -130,9 +148,39 @@ def create_subaccount_from_survey_data(survey_data):
                 survey_data.get('Phone') or 
                 survey_data.get('Patient Phone') or '').strip()
         
+        # Extract address components (webhook format: address1, city, state, postal_code)
+        address1 = (survey_data.get('address1') or     # From webhook template
+                   survey_data.get('address') or       # Fallback
+                   survey_data.get('street_address') or 
+                   survey_data.get('Address') or 
+                   '').strip()
+        
+        city = (survey_data.get('city') or     # From webhook template
+               survey_data.get('City') or 
+               '').strip()
+        
+        state = (survey_data.get('state') or     # From webhook template
+                survey_data.get('State') or 
+                '').strip()
+        
+        postal_code = (survey_data.get('postal_code') or     # From webhook template
+                      survey_data.get('zip_code') or 
+                      survey_data.get('zipcode') or 
+                      survey_data.get('zip') or 
+                      survey_data.get('Zip Code') or 
+                      '').strip()
+        
         # Validate required fields
         if not all([business_name, first_name, last_name, email]):
             raise ValueError("Missing required fields: business_name, first_name, last_name, email")
+        
+        # Validate EIN format if provided (should be 9 digits: XX-XXXXXXX)
+        if ein and not (ein.replace('-', '').isdigit() and len(ein.replace('-', '')) == 9):
+            logging.warning(f"⚠️ Invalid EIN format: {ein} (should be 9 digits)")
+        
+        # Validate NPI format if provided (should be 10 digits)
+        if npi and not (npi.isdigit() and len(npi) == 10):
+            logging.warning(f"⚠️ Invalid NPI format: {npi} (should be 10 digits)")
         
         # Clean phone number
         clean_phone = phone.replace('+1', '').replace('-', '').replace('(', '').replace(')', '').replace(' ', '')
@@ -141,10 +189,10 @@ def create_subaccount_from_survey_data(survey_data):
         subaccount_data = {
           "name": f"{business_name} - {first_name} {last_name}",
           "businessName": business_name,  # Required field
-          "address": survey_data.get('address', ''),
-          "city": survey_data.get('city', ''),
-          "state": survey_data.get('state', ''),
-          "postalCode": survey_data.get('zip_code', ''),
+          "address": address1,  # Use extracted address1 field
+          "city": city,         # Use extracted city field
+          "state": state,       # Use extracted state field
+          "postalCode": postal_code,  # Use extracted postal_code field
           "country": "US",
           "phone": clean_phone,
           "email": email,
@@ -153,10 +201,21 @@ def create_subaccount_from_survey_data(survey_data):
           "firstName": first_name,
           "lastName": last_name
         }
+        
+        # Add EIN and NPI if provided
+        if ein:
+            subaccount_data["ein"] = ein
+        if npi:
+            subaccount_data["npi"] = npi
       
-        # Log sub-account creation attempt
+        # Log sub-account creation attempt with all extracted fields
         logging.info(f"🚀 Creating sub-account for {business_name}")
         logging.info(f"👤 Contact: {first_name} {last_name} ({email})")
+        logging.info(f"📍 Address: {address1}, {city}, {state} {postal_code}")
+        if ein:
+            logging.info(f"🏢 EIN (Federal Tax ID): {ein}")
+        if npi:
+            logging.info(f"⚕️ NPI (National Provider ID): {npi}")
         logging.info(f"📊 Sub-account data: {json.dumps(subaccount_data, indent=2)}")
         
         # API headers for Cell Products company account
@@ -263,7 +322,7 @@ def handle_survey_completion():
         logging.info(f"📊 Available survey fields: {list(survey_data.keys())}")
         logging.info(f"📊 Survey data sample: {dict(list(survey_data.items())[:10])}")  # First 10 fields
         
-        # Debug business name extraction with each candidate
+        # Debug business name extraction with each candidate (including webhook template fields)
         business_name_candidates = {
             'Business name': survey_data.get('Business name'),           # Capital B (what GHL actually sends)
             'business name': survey_data.get('business name'),           # lowercase b (backup)
@@ -272,7 +331,8 @@ def handle_survey_completion():
             'company': survey_data.get('company'),
             'companyName': survey_data.get('companyName'),
             'Provider Name': survey_data.get('Provider Name'),
-            'Legal Company Name': survey_data.get('Legal Company Name')
+            'Legal Company Name': survey_data.get('Legal Company Name'),
+            'legal_company_name': survey_data.get('legal_company_name')   # From webhook template
         }
         
         logging.info(f"🔍 Business name extraction candidates: {business_name_candidates}")
@@ -284,7 +344,9 @@ def handle_survey_completion():
                         survey_data.get('company') or 
                         survey_data.get('companyName') or 
                         survey_data.get('Provider Name') or 
-                        survey_data.get('Legal Company Name') or '').strip()
+                        survey_data.get('Legal Company Name') or 
+                        survey_data.get('legal_company_name') or     # From webhook template
+                        '').strip()
         
         logging.info(f"🔍 Extracted business name: '{business_name}'")
         
